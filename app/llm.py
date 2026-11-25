@@ -244,7 +244,12 @@ class OpenAiLlm:
             return {}
         extra: dict[str, Any] = {}
         if self._reasoning_effort:
-            extra["reasoning"] = {"effort": self._reasoning_effort}
+            if self._reasoning_effort.lower() == "none":
+                # Algunos endpoints de Chat Completions exigen el parámetro
+                # estándar superior para permitir function tools sin razonar.
+                extra["reasoning_effort"] = "none"
+            else:
+                extra["reasoning"] = {"effort": self._reasoning_effort}
         if self._provider_sort:
             extra["provider"] = {"sort": self._provider_sort}
         return extra
