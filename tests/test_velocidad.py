@@ -72,11 +72,51 @@ class TestLoQueViajaEnLaLlamada:
 
         enviado = json.loads(ruta.calls.last.request.content)
         assert "reasoning" not in enviado
+        assert "reasoning_effort" not in enviado
         assert "provider" not in enviado
 
 
 class TestElSeguro:
     """Un modelo que no los acepte tiene que contestar igual."""
+
+    @respx.mock
+    async def test_provider_no_aceptado_no_apaga_reasoning_effort_none(self) -> None:
+        llamadas: list[dict] = []
+
+        def responder(request: httpx.Request) -> httpx.Response:
+            cuerpo = json.loads(request.content)
+            llamadas.append(cuerpo)
+            if "provider" in cuerpo:
+                return httpx.Response(
+                    400, json={"error": {"message": "Unknown parameter: 'provider'"}}
+                )
+            if cuerpo.get("reasoning_effort") != "none":
+                return httpx.Response(
+                    400,
+                    json={"error": {"message": "reasoning_effort must be none"}},
+                )
+            return _ok("contesto igual")
+
+        respx.post("https://prov.test/chat/completions").mock(side_effect=responder)
+        llm = OpenAiLlm(
+            "k", "gpt-6-luna", base_url="https://prov.test",
+            reasoning_effort="none", provider_sort="throughput",
+        )
+        tools = [{
+            "type": "function",
+            "function": {"name": "book", "parameters": {"type": "object"}},
+        }]
+        reply = await llm.complete(
+            [{"role": "user", "content": "hola"}], tools=tools
+        )
+
+        assert reply.content == "contesto igual"
+        assert len(llamadas) == 2
+        assert "provider" in llamadas[0]
+        assert llamadas[0]["reasoning_effort"] == "none"
+        assert "provider" not in llamadas[1]
+        assert llamadas[1]["reasoning_effort"] == "none"
+        assert llamadas[1]["tools"] == tools
 
     @respx.mock
     async def test_si_el_proveedor_se_queja_se_apagan_y_contesta(self) -> None:
@@ -102,6 +142,8 @@ class TestElSeguro:
         assert reply.content == "contesto igual"
         assert "reasoning" in llamadas[0]
         assert "reasoning" not in llamadas[-1]
+        assert "reasoning_effort" not in llamadas[-1]
+        assert "provider" not in llamadas[-1]
 
     @respx.mock
     async def test_apagados_se_quedan_apagados(self) -> None:

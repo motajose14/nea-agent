@@ -255,7 +255,7 @@ class OpenAiLlm:
         return extra
 
     def _quiza_por_los_extras(self, exc: Exception) -> None:
-        """Si el proveedor se quejo de `reasoning` o `provider`, se apagan.
+        """Desactiva solo el ajuste que el proveedor rechazó.
 
         Aqui pasan modelos de muchos miembros, no uno solo elegido por
         nosotros. Bajar el tiempo de respuesta es una optimizacion, y una
@@ -268,11 +268,20 @@ class OpenAiLlm:
         if not self._extras_ok:
             return
         texto = str(exc).lower()
-        if "reasoning" in texto or "provider" in texto:
+        if "provider" in texto and "reasoning" not in texto:
+            # No quitar `reasoning_effort`: hay modelos que necesitan `none`
+            # para admitir function tools en Chat Completions.
+            self._provider_sort = ""
+            logger.warning(
+                "llm: %s no acepta el ajuste de proveedor - se apaga y se "
+                "reintenta sin él",
+                self._model,
+            )
+        elif "reasoning" in texto:
             self._extras_ok = False
             logger.warning(
-                "llm: %s no acepta los ajustes de velocidad - se apagan para "
-                "este modelo y se reintenta sin ellos",
+                "llm: %s no acepta el ajuste de razonamiento - los ajustes de "
+                "velocidad se apagan para este modelo y se reintenta sin ellos",
                 self._model,
             )
 
